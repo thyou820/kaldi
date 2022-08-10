@@ -84,6 +84,7 @@ class DecodableInterface {
   /// Returns the log likelihood, which will be negated in the decoder.
   /// The "frame" starts from zero.  You should verify that NumFramesReady() > frame
   /// before calling this.
+  //frame幀下,輸入為index(tid) 的似然概率(gmm模型一般說似然概率)
   virtual BaseFloat LogLikelihood(int32 frame, int32 index) = 0;
 
   /// Returns true if this is the last frame.  Frames are zero-based, so the
@@ -97,6 +98,7 @@ class DecodableInterface {
   /// in an online-decoding setting, and would only return true in a
   /// decoding-from-matrix setting where we want to allow the last delta or LDA
   /// features to be flushed out for compatibility with the baseline setup.
+  //判斷當前幀是否為最後一幀
   virtual bool IsLastFrame(int32 frame) const = 0;
 
   /// The call NumFramesReady() will return the number of frames currently available

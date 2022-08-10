@@ -53,9 +53,11 @@ int main(int argc, char *argv[]) {
     ParseOptions po(usage);
     Timer timer;
     bool allow_partial = true; 
+    //對聲學模型代價做縮放 (通常聲學模型的代價都會比較大)
     BaseFloat acoustic_scale = 0.1;
 
     std::string word_syms_filename;
+    //beam越大,最終topN的這個N就會越大
     BaseFloat beam = 16.0;
     po.Register("beam", &beam, "Decoding log-likelihood beam");
     po.Register("acoustic-scale", &acoustic_scale,
@@ -71,13 +73,20 @@ int main(int argc, char *argv[]) {
       exit(1);
     }
 
+    //聲學模型
     std::string model_in_filename = po.GetArg(1),
+        //HCLG.FST
         fst_in_filename = po.GetArg(2),
+        //特徵
         feature_rspecifier = po.GetArg(3),
+        //輸出的單詞序列
         words_wspecifier = po.GetArg(4),
+        //幀對齊的結果 (transistion-id -> phone)
         alignment_wspecifier = po.GetOptArg(5),
+        //詞格,topN中的路徑重新生成一個圖
         lattice_wspecifier = po.GetOptArg(6);
 
+    //讀取transition-model(讀取聲學模型)
     TransitionModel trans_model;
     AmDiagGmm am_gmm;
     {
@@ -87,12 +96,16 @@ int main(int argc, char *argv[]) {
       am_gmm.Read(ki.Stream(), binary);
     }
 
+    //讀取fst (HCLG.fst)
     Fst<StdArc> *decode_fst = ReadFstKaldiGeneric(fst_in_filename);
 
+    //輸出單詞序列
     Int32VectorWriter words_writer(words_wspecifier);
 
+    //輸出的對齊序列
     Int32VectorWriter alignment_writer(alignment_wspecifier);
 
+    //Lattice
     CompactLatticeWriter clat_writer(lattice_wspecifier);
 
     fst::SymbolTable *word_syms = NULL;
@@ -101,25 +114,45 @@ int main(int argc, char *argv[]) {
         KALDI_ERR << "Could not read symbol table from file "
                    << word_syms_filename;
 
+    // 讀取特徵
     SequentialBaseFloatMatrixReader feature_reader(feature_rspecifier);
 
+    //總體似然
     BaseFloat tot_like = 0.0;
+    //幀數
     kaldi::int64 frame_count = 0;
+    //多少句子解碼成功,多少失敗
     int num_success = 0, num_fail = 0;
+    // **核心 (聲明變量) (HCLG.fst, beam)
     SimpleDecoder decoder(*decode_fst, beam);
 
+    //**遍歷音頻
     for (; !feature_reader.Done(); feature_reader.Next()) {
-      std::string utt = feature_reader.Key();
+
+      // utt:音頻id
+      std::string utt = feature_reader.Key(); 
+      //查看音頻id 可以cout出來看，取消下面程式碼的註解，再,make一次即可
+      //std::cout<<"音頻id - :"<<utt<<std::endl;
+
+      // Matrix:音頻特幀的格式、features:音頻特徵內容
+      //每列是一幀，一幀有39維的數值(***待定)
       Matrix<BaseFloat> features (feature_reader.Value());
+      //std::cout<<"音頻內容 - :"<<features<<std::endl;
+
       feature_reader.FreeCurrent();
+      
+      //判斷音頻特徵是否為0，如果音頻特徵是0，num_fail+1
       if (features.NumRows() == 0) {
         KALDI_WARN << "Zero-length utterance: " << utt;
         num_fail++;
         continue;
       }
 
+      //聲學模型 (看到gmm通常都是聲學模型)
       DecodableAmDiagGmmScaled gmm_decodable(am_gmm, trans_model, features,
                                              acoustic_scale);
+
+      //解碼 (有了HCLG,聲學模型)
       decoder.Decode(&gmm_decodable);
 
       VectorFst<LatticeArc> decoded;  // linear FST.
@@ -172,6 +205,7 @@ int main(int argc, char *argv[]) {
       }
     }
 
+    //
     double elapsed = timer.Elapsed();
     KALDI_LOG << "Time taken "<< elapsed
               << "s: real-time factor assuming 100 frames/sec is "
