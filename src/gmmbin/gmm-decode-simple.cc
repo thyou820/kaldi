@@ -155,25 +155,36 @@ int main(int argc, char *argv[]) {
       //解碼 (有了HCLG,聲學模型)
       decoder.Decode(&gmm_decodable);
 
+      //聲明lattice
       VectorFst<LatticeArc> decoded;  // linear FST.
 
       if ( (allow_partial || decoder.ReachedFinal())
            && decoder.GetBestPath(&decoded) ) {
+        //判斷解碼有沒有到達終點 -> 沒有也是會successs -> 但會warning
         if (!decoder.ReachedFinal())
           KALDI_WARN << "Decoder did not reach end-state, "
                      << "outputting partial traceback since --allow-partial=true";
         num_success++;
 
+        //解碼路徑tid
         std::vector<int32> alignment;
+        //輸出的詞
         std::vector<int32> words;
+        //解碼之後的代價
         LatticeWeight weight;
+
+        //總幀數
         frame_count += features.NumRows();
 
+        //得到lattice
         GetLinearSymbolSequence(decoded, &alignment, &words, &weight);
 
+        //生成文件
         words_writer.Write(utt, words);
+        //判斷是否有傳入參數(5) alignment_wspecifier，有傳入就寫文件
         if (alignment_wspecifier != "")
           alignment_writer.Write(utt, alignment);
+        // //判斷是否有傳入參數(6) lattice_wspecifier
         if (lattice_wspecifier != "") {
           // We'll write the lattice without acoustic scaling.
           if (acoustic_scale != 0.0)
@@ -183,6 +194,8 @@ int main(int argc, char *argv[]) {
           ConvertLattice(decoded, &clat, true);
           clat_writer.Write(utt, clat);
         }
+
+        //有傳入就自動轉字 word-id -> word 
         if (word_syms != NULL) {
           std::cerr << utt << ' ';
           for (size_t i = 0; i < words.size(); i++) {

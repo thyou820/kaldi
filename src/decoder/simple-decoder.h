@@ -36,21 +36,29 @@ namespace kaldi {
  */
 class SimpleDecoder {
  public:
+  // 邊 (輸入,輸出.代價)
   typedef fst::StdArc StdArc;
+  // 代價
   typedef StdArc::Weight StdWeight;
+  // 輸出
   typedef StdArc::Label Label;
+  // 輸
   typedef StdArc::StateId StateId;
 
+  //構造方法
   SimpleDecoder(const fst::Fst<fst::StdArc> &fst, BaseFloat beam): fst_(fst), beam_(beam) { }
 
+  //析構函數
   ~SimpleDecoder();
 
   /// Decode this utterance.
   /// Returns true if any tokens reached the end of the file (regardless of
   /// whether they are in a final state); query ReachedFinal() after Decode()
   /// to see whether we reached a final state.
+  /// 解碼一段語音
   bool Decode(DecodableInterface *decodable);
 
+  //判斷有沒有到中止節點
   bool ReachedFinal() const;
 
   // GetBestPath gets the decoding traceback. If "use_final_probs" is true
@@ -61,6 +69,7 @@ class SimpleDecoder {
   // If Decode() returned true, it is safe to assume GetBestPath will return true.
   // It returns true if the output lattice was nonempty (i.e. had states in it);
   // using the return value is deprecated.
+  // 獲取最優的輸出路徑
   bool GetBestPath(Lattice *fst_out, bool use_final_probs = true) const;
 
   /// *** The next functions are from the "new interface". ***
@@ -70,33 +79,41 @@ class SimpleDecoder {
   /// cost) of any token on the final frame, and the best cost of any token
   /// on the final frame.  If it is infinity it means no final-states were present
   /// on the final frame.  It will usually be nonnegative.
+  
   BaseFloat FinalRelativeCost() const;
 
   /// InitDecoding initializes the decoding, and should only be used if you
   /// intend to call AdvanceDecoding().  If you call Decode(), you don't need
   /// to call this.  You can call InitDecoding if you have already decoded an
   /// utterance and want to start with a new utterance.
+  /// 初始化解碼器，每一段語音進來之後，都要初始化解碼器
   void InitDecoding();
 
   /// This will decode until there are no more frames ready in the decodable
   /// object, but if max_num_frames is >= 0 it will decode no more than
   /// that many frames.  If it returns false, then no tokens are alive,
   /// which is a kind of error state.
+  /// 解碼一段語音
   void AdvanceDecoding(DecodableInterface *decodable,
                          int32 max_num_frames = -1);
 
   /// Returns the number of frames already decoded.
+  /// 已經解碼多少幀語音
   int32 NumFramesDecoded() const { return num_frames_decoded_; }
 
  private:
-
+  // 令牌
   class Token {
    public:
+    // arc 
     LatticeArc arc_; // We use LatticeArc so that we can separately
                      // store the acoustic and graph cost, in case
                      // we need to produce lattice-formatted output.
+    // 前向指針,回溯最優路徑
     Token *prev_;
+    // 前面有多少個節點
     int32 ref_count_;
+    // 代價
     double cost_; // accumulated total cost up to this point.
     Token(const StdArc &arc,
           BaseFloat acoustic_cost,
@@ -131,12 +148,17 @@ class SimpleDecoder {
 
   // ProcessEmitting decodes the frame num_frames_decoded_ of the
   // decodable object, then increments num_frames_decoded_.
+  // 拓展實邊 (trasistion-id 不等於0的)
   void ProcessEmitting(DecodableInterface *decodable);
 
+  // 拓展空邊 (trasistion-id 等於0的 ， 特殊的邊)
   void ProcessNonemitting();
 
+  // 當前解碼的Token
   unordered_map<StateId, Token*> cur_toks_;
+  // 上一幀解碼的Token
   unordered_map<StateId, Token*> prev_toks_;
+  // HCLG
   const fst::Fst<fst::StdArc> &fst_;
   BaseFloat beam_;
   // Keep track of the number of frames decoded in the current file.
