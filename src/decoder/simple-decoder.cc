@@ -33,6 +33,8 @@ SimpleDecoder::~SimpleDecoder() {
 bool SimpleDecoder::Decode(DecodableInterface *decodable) {
   // 初始化
   InitDecoding();
+
+  // 解碼
   AdvanceDecoding(decodable);
   return (!cur_toks_.empty());
 }
@@ -57,27 +59,42 @@ void SimpleDecoder::InitDecoding() {
   // 重點
   ProcessNonemitting();
 }
-
+// *decodable : 聲學模型
 void SimpleDecoder::AdvanceDecoding(DecodableInterface *decodable,
                                       int32 max_num_frames) {
+  // 待解碼的音頻帧數要大於等於0
   KALDI_ASSERT(num_frames_decoded_ >= 0 &&
                "You must call InitDecoding() before AdvanceDecoding()");
+
+
+  // 音頻的帧數
   int32 num_frames_ready = decodable->NumFramesReady();
   // num_frames_ready must be >= num_frames_decoded, or else
   // the number of frames ready must have decreased (which doesn't
   // make sense) or the decodable object changed between calls
   // (which isn't allowed).
+  // num_frames_ready : 音頻一共的帧數
+  // num_frames_decoded_ : 當前解碼的帧數
+  // 保證音頻的帧數 > 當前解碼的帧數
   KALDI_ASSERT(num_frames_ready >= num_frames_decoded_);
   int32 target_frames_decoded = num_frames_ready;
+  // simple-decoder.h 裡 max_num_frames有默認值 = -1
   if (max_num_frames >= 0)
     target_frames_decoded = std::min(target_frames_decoded,
                                      num_frames_decoded_ + max_num_frames);
+  
+  // 一帧一帧解碼(如果還有帧,則繼續解碼)
   while (num_frames_decoded_ < target_frames_decoded) {
     // note: ProcessEmitting() increments num_frames_decoded_
+    // 清除了prev_toks
     ClearToks(prev_toks_);
+    // 交換toks
     cur_toks_.swap(prev_toks_);
+    // 拓展實邊
     ProcessEmitting(decodable);
+    // 拓展虛邊
     ProcessNonemitting();
+    // 處理令牌(減枝)
     PruneToks(beam_, &cur_toks_);
   }
 }
@@ -174,33 +191,56 @@ bool SimpleDecoder::GetBestPath(Lattice *fst_out, bool use_final_probs) const {
 
 
 void SimpleDecoder::ProcessEmitting(DecodableInterface *decodable) {
+
+  // 當前解碼的帧數
   int32 frame = num_frames_decoded_;
   // Processes emitting arcs for one frame.  Propagates from
   // prev_toks_ to cur_toks_.
+  // 代價,初始為正無窮
   double cutoff = std::numeric_limits<BaseFloat>::infinity();
+  // 遍歷prev裡面的節點
   for (unordered_map<StateId, Token*>::iterator iter = prev_toks_.begin();
        iter != prev_toks_.end();
        ++iter) {
+    // 得到的節點
     StateId state = iter->first;
+    // 得到節點上的Token 
     Token *tok = iter->second;
+    // 保證State和弧上的節點保持一致
     KALDI_ASSERT(state == tok->arc_.nextstate);
+    
+    // 遍歷從state節點中出發的弧
     for (fst::ArcIterator<fst::Fst<StdArc> > aiter(fst_, state);
          !aiter.Done();
          aiter.Next()) {
+      // 遍歷的每一條弧
       const StdArc &arc = aiter.Value();
+      // std::cout<<"遍歷的節點 第: "<< frame << "幀 ilable: " << arc.ilable << std::endl;
       if (arc.ilabel != 0) {  // propagate..
+
+        // 得到聲學模型的代價
         BaseFloat acoustic_cost = -decodable->LogLikelihood(frame, arc.ilabel);
+        // std::cout<< "聲學模型代價: " << acoustic_cost << std::endl;
         double total_cost = tok->cost_ + arc.weight.Value() + acoustic_cost;
 
+        // cutoff初始是正無窮
         if (total_cost >= cutoff) continue;
         if (total_cost + beam_  < cutoff)
           cutoff = total_cost + beam_;
+        
+        // 新建一個token (ark 走的哪條邊,聲學模型的代價,上一個Tokem)  
         Token *new_tok = new Token(arc, acoustic_cost, tok);
+        
+        // 查找ark邊上的節點是否有令牌
         unordered_map<StateId, Token*>::iterator find_iter
             = cur_toks_.find(arc.nextstate);
+
+        // 表示沒有找到
         if (find_iter == cur_toks_.end()) {
+          // 賦值節點上的令牌
           cur_toks_[arc.nextstate] = new_tok;
         } else {
+          //如果這個節點上有令牌,對比哪個代價更小，刪掉代價大的令牌
           if ( *(find_iter->second) < *new_tok ) {
             Token::TokenDelete(find_iter->second);
             find_iter->second = new_tok;
@@ -244,11 +284,15 @@ void SimpleDecoder::ProcessNonemitting() {
     StateId state = queue.back();
     queue.pop_back();
     Token *tok = cur_toks_[state];
+    // 安全校驗
     KALDI_ASSERT(tok != NULL && state == tok->arc_.nextstate);
+    
+    //遍歷HCLG
     for (fst::ArcIterator<fst::Fst<StdArc> > aiter(fst_, state);
          !aiter.Done();
          aiter.Next()) {
       const StdArc &arc = aiter.Value();
+      // 拓展空邊
       if (arc.ilabel == 0) {  // propagate nonemitting only...
         const BaseFloat acoustic_cost = 0.0;
         Token *new_tok = new Token(arc, acoustic_cost, tok);
