@@ -42,7 +42,7 @@ class SimpleDecoder {
   typedef StdArc::Weight StdWeight;
   // 輸出
   typedef StdArc::Label Label;
-  // 輸
+  // 
   typedef StdArc::StateId StateId;
 
   //構造方法
@@ -118,17 +118,24 @@ class SimpleDecoder {
     Token(const StdArc &arc,
           BaseFloat acoustic_cost,
           Token *prev): prev_(prev), ref_count_(1) {
+      // 輸入標籤
       arc_.ilabel = arc.ilabel;
+      // 輸出標籤
       arc_.olabel = arc.olabel;
+      // 代價
       arc_.weight = LatticeWeight(arc.weight.Value(), acoustic_cost);
+      // 邊指向的下一個狀態
       arc_.nextstate = arc.nextstate;
       if (prev) {
+        // 之前節點++
         prev->ref_count_++;
+        // 代價到該節點的總代價
         cost_ = prev->cost_ + (arc.weight.Value() + acoustic_cost);
       } else {
         cost_ = arc.weight.Value() + acoustic_cost;
       }
     }
+    // 運算符重載
     bool operator < (const Token &other) {
       return cost_ > other.cost_;
     }

@@ -29,8 +29,9 @@ SimpleDecoder::~SimpleDecoder() {
   ClearToks(prev_toks_);
 }
 
-
+// 解碼核心
 bool SimpleDecoder::Decode(DecodableInterface *decodable) {
+  // 初始化
   InitDecoding();
   AdvanceDecoding(decodable);
   return (!cur_toks_.empty());
@@ -38,14 +39,22 @@ bool SimpleDecoder::Decode(DecodableInterface *decodable) {
 
 void SimpleDecoder::InitDecoding() {
   // clean up from last time:
+  // 清空cur_toks
   ClearToks(cur_toks_);
+  // 清空prev_toks_
   ClearToks(prev_toks_);
+  
   // initialize decoding:
+  // start_state : HCLG 的加粗圈
   StateId start_state = fst_.Start();
+  
   KALDI_ASSERT(start_state != fst::kNoStateId);
   StdArc dummy_arc(0, 0, StdWeight::One(), start_state);
+  // NULL:沒有*prev
   cur_toks_[start_state] = new Token(dummy_arc, 0.0, NULL);
+  // 初始化解碼幀數
   num_frames_decoded_ = 0;
+  // 重點
   ProcessNonemitting();
 }
 
@@ -205,18 +214,30 @@ void SimpleDecoder::ProcessEmitting(DecodableInterface *decodable) {
   num_frames_decoded_++;
 }
 
+// 拓展空邊
 void SimpleDecoder::ProcessNonemitting() {
   // Processes nonemitting arcs for one frame.  Propagates within
   // cur_toks_.
   std::vector<StateId> queue;
   double infinity = std::numeric_limits<double>::infinity();
+  // 宣告一個best_cost，並初始化為infinity
   double best_cost = infinity;
+  // 遍歷cur_toks
   for (unordered_map<StateId, Token*>::iterator iter = cur_toks_.begin();
        iter != cur_toks_.end();
        ++iter) {
+    // 把cur中的state id添加到queue中
+    // first,second是c++的一種迭代方式，指向的是toks的第一個值與第二個值
+    // 這裡的first是 state id，second是cost 
     queue.push_back(iter->first);
+    // 取得代價比較小的
+    // std::cout<<"iter->first :"<< iter->first << std::endl;
+    // std::cout<<"best_cost :"<< best_cost << std::endl;
+    // std::cout<<"iter->second->cost_ :"<< iter->second->cost_ << std::endl;
     best_cost = std::min(best_cost, iter->second->cost_);
   }
+  // 剪枝代價
+  // 減少枝葉(減枝)
   double cutoff = best_cost + beam_;
 
   while (!queue.empty()) {
