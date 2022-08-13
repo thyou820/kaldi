@@ -82,7 +82,7 @@ void SimpleDecoder::AdvanceDecoding(DecodableInterface *decodable,
   if (max_num_frames >= 0)
     target_frames_decoded = std::min(target_frames_decoded,
                                      num_frames_decoded_ + max_num_frames);
-  
+  // ***核心
   // 一帧一帧解碼(如果還有帧,則繼續解碼)
   while (num_frames_decoded_ < target_frames_decoded) {
     // note: ProcessEmitting() increments num_frames_decoded_
@@ -215,7 +215,7 @@ void SimpleDecoder::ProcessEmitting(DecodableInterface *decodable) {
          aiter.Next()) {
       // 遍歷的每一條弧
       const StdArc &arc = aiter.Value();
-      // std::cout<<"遍歷的節點 第: "<< frame << "幀 ilable: " << arc.ilable << std::endl;
+      // std::cout<<"遍歷的節點 : " << state <<"", 第: "<< frame << "幀, ilable: " << arc.ilable << std::endl;
       if (arc.ilabel != 0) {  // propagate..
 
         // 得到聲學模型的代價
@@ -239,6 +239,7 @@ void SimpleDecoder::ProcessEmitting(DecodableInterface *decodable) {
         if (find_iter == cur_toks_.end()) {
           // 賦值節點上的令牌
           cur_toks_[arc.nextstate] = new_tok;
+          // std::cout<< "添加的令牌: " << arc.nextstate << " 節點 ->" << new_tok->cost_<< "代價" << std::endl; 
         } else {
           //如果這個節點上有令牌,對比哪個代價更小，刪掉代價大的令牌
           if ( *(find_iter->second) < *new_tok ) {
@@ -279,9 +280,10 @@ void SimpleDecoder::ProcessNonemitting() {
   // 剪枝代價
   // 減少枝葉(減枝)
   double cutoff = best_cost + beam_;
-
+  // std::cout<<"cutoff_after :"<< cutoff << std::endl;
   while (!queue.empty()) {
     StateId state = queue.back();
+    // std::cout<<"pop_state_id: "<< state << std::endl;
     queue.pop_back();
     Token *tok = cur_toks_[state];
     // 安全校驗
@@ -292,6 +294,8 @@ void SimpleDecoder::ProcessNonemitting() {
          !aiter.Done();
          aiter.Next()) {
       const StdArc &arc = aiter.Value();
+      // std::cout<<"-----ProcessNonemitting----- arc.ialabel : "<< arc.ialabel << std::endl;
+
       // 拓展空邊
       if (arc.ilabel == 0) {  // propagate nonemitting only...
         const BaseFloat acoustic_cost = 0.0;
@@ -334,24 +338,38 @@ void SimpleDecoder::PruneToks(BaseFloat beam, unordered_map<StateId, Token*> *to
     KALDI_VLOG(2) <<  "No tokens to prune.\n";
     return;
   }
+
   double best_cost = std::numeric_limits<double>::infinity();
+
+  // 遍歷cur_toknes 
   for (unordered_map<StateId, Token*>::iterator iter = toks->begin();
        iter != toks->end(); ++iter)
+    // 找到一個最小的代價
     best_cost = std::min(best_cost, iter->second->cost_);
+
   std::vector<StateId> retained;
   double cutoff = best_cost + beam;
+
+  // 遍歷cur_toknes 
   for (unordered_map<StateId, Token*>::iterator iter = toks->begin();
        iter != toks->end(); ++iter) {
+    // 如果遍歷的代價比cutoff小
     if (iter->second->cost_ < cutoff)
+      // 保留stateid 
       retained.push_back(iter->first);
     else
+      // 否則刪除
       Token::TokenDelete(iter->second);
   }
+
   unordered_map<StateId, Token*> tmp;
+  // 遍歷保留了那些stateid 
   for (size_t i = 0; i < retained.size(); i++) {
+    // 把retained中的stateid所對應的Token賦值給tmp中的state id
     tmp[retained[i]] = (*toks)[retained[i]];
   }
   KALDI_VLOG(2) <<  "Pruned to " << (retained.size()) << " toks.\n";
+  // 剪枝 : 把cur_toks 換成 tmp   
   tmp.swap(*toks);
 }
 
